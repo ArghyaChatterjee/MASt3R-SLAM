@@ -1,22 +1,12 @@
-[comment]: <> (# MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors)
-
-<p align="center">
-  <h1 align="center">MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors</h1>
-  <p align="center">
-    <a href="https://rmurai.co.uk/"><strong>Riku Murai*</strong></a>
-    ·
-    <a href="https://edexheim.github.io/"><strong>Eric Dexheimer*</strong></a>
-    ·
-    <a href="https://www.doc.ic.ac.uk/~ajd/"><strong>Andrew J. Davison</strong></a>
-  </p>
-  <p align="center">(* Equal Contribution)</p>
+# MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors
 
 [comment]: <> (  <h2 align="center">PAPER</h2>)
   <h3 align="center"><a href="https://arxiv.org/abs/2412.12392">Paper</a> | <a href="https://youtu.be/wozt71NBFTQ">Video</a> | <a href="https://edexheim.github.io/mast3r-slam/">Project Page</a></h3>
   <div align="center"></div>
 
+# Repository Workflow
 <p align="center">
-    <img src="./media/teaser.gif" alt="teaser" width="100%">
+    <img src="./media/mast3r_slam.png" alt="teaser" width="100%">
 </p>
 <br>
 
@@ -64,13 +54,6 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth -P checkpoints/
 wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl -P checkpoints/
 ```
-
-## WSL Users
-We have primarily tested on Ubuntu.  If you are using WSL, please checkout to the windows branch and follow the above installation.
-```
-git checkout windows
-```
-This disables multiprocessing which causes an issue with shared memory as discussed [here](https://github.com/rmurai0610/MASt3R-SLAM/issues/21).
 
 ## Examples
 ```
@@ -139,25 +122,6 @@ bash ./scripts/eval_euroc.sh --no-calib
 bash ./scripts/eval_eth3d.sh 
 ```
 
-## Reproducibility
-There might be minor differences between the released version and the results in the paper after developing this multi-processing version. 
-We run all our experiments on an RTX 4090, and the performance may differ when running with a different GPU.
-
-## Acknowledgement
-We sincerely thank the developers and contributors of the many open-source projects that our code is built upon.
-- [MASt3R](https://github.com/naver/mast3r)
-- [MASt3R-SfM](https://github.com/naver/mast3r/tree/mast3r_sfm)
-- [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM)
-- [ModernGL](https://github.com/moderngl/moderngl)
-
-# Citation
-If you found this code/work to be useful in your own research, please considering citing the following:
-
-```bibtex
-@article{murai2024_mast3rslam,
-    title={{MASt3R-SLAM}: Real-Time Dense {SLAM} with {3D} Reconstruction Priors},
-    author={Murai, Riku and Dexheimer, Eric and Davison, Andrew J.},
-    journal={arXiv preprint},
-    year={2024},
-}      
-```
+<p align="center">
+    <img src="./media/teaser.gif" alt="teaser" width="100%">
+</p>
