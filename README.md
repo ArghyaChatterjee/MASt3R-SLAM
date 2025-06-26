@@ -1,9 +1,5 @@
 # MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors
 
-[comment]: <> (  <h2 align="center">PAPER</h2>)
-  <h3 align="center"><a href="https://arxiv.org/abs/2412.12392">Paper</a> | <a href="https://youtu.be/wozt71NBFTQ">Video</a> | <a href="https://edexheim.github.io/mast3r-slam/">Project Page</a></h3>
-  <div align="center"></div>
-
 # Repository Workflow
 <p align="center">
     <img src="./media/mast3r_slam.png" alt="teaser" width="100%">
