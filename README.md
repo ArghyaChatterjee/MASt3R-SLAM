@@ -1,11 +1,11 @@
 <p align="center">
-  <h1 align="center">MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors</h1>
+  <h1 align="center">MASt3R-SLAM-ROS2</h1>
   <p align="center">
   <a href="https://www.youtube.com/watch?v=iqkj2m7uGEQ" target="_blank">
-    <img src="./media/ihmc_onr_demo.gif" alt="Video Thumbnail" width="500">
+    <img src="./media/ihmc_onr_demo.gif" alt="Video Thumbnail" width="400">
   </a>
   <a href="https://www.youtube.com/watch?v=7QrIU78EMaM" target="_blank">
-    <img src="./media/ihmc_zedmini_demo.gif" alt="Video Thumbnail" width="500">
+    <img src="./media/ihmc_zedmini_demo.gif" alt="Video Thumbnail" width="400">
   </a>
   </p>
 </p>
