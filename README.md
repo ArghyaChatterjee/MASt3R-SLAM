@@ -37,8 +37,6 @@ pip3 install -r requirements.txt
 pip3 install --no-build-isolation -e thirdparty/mast3r
 pip3 install -e thirdparty/in3d
 pip3 install --no-build-isolation -e .
-sudo apt install ros-humble-tf-transformations
-pip3 install transforms3d
 ```
 
 Setup the checkpoints for MASt3R and retrieval.  The license for the checkpoints and more information on the datasets used is written [here](https://github.com/naver/mast3r/blob/mast3r_sfm/CHECKPOINTS_NOTICE).
