@@ -6,15 +6,26 @@ import numpy as np
 import torch
 import pyrealsense2 as rs
 import yaml
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, CameraInfo
+from cv_bridge import CvBridge
+from threading import Thread, Lock
+import rosbags
+import time
+from pathlib import Path
+
+from rosbags.highlevel import AnyReader
+from rosbags.typesys import Stores, get_typestore
 
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
 
-HAS_TORCHCODEC = True
-try:
-    from torchcodec.decoders import VideoDecoder
-except Exception as e:
-    HAS_TORCHCODEC = False
+from torchcodec.decoders import VideoDecoder
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='mast3r_dataloader.log')
+logger = logging.getLogger(__name__)
 
 
 class MonocularDataset(torch.utils.data.Dataset):
@@ -183,6 +194,9 @@ class RealsenseDataset(MonocularDataset):
                     rgb_intrinsics.ppy,
                 ],
             )
+            # print(f"Camera Intrinsics set: {self.camera_intrinsics}")
+
+        # print(f"Calibration Status: {self.use_calibration}")
 
     def __len__(self):
         return 999999
@@ -202,6 +216,155 @@ class RealsenseDataset(MonocularDataset):
         img = img.astype(self.dtype)
         return img
 
+class ROS2BagDataset(MonocularDataset):
+    def __init__(self, dataset_path, compressed_image_topic, camera_info_topic=None):
+        super().__init__()
+        self.dataset_path = pathlib.Path(dataset_path)
+        self.compressed_image_topic = compressed_image_topic
+        self.camera_info_topic = camera_info_topic
+        self.reader = AnyReader([Path(self.dataset_path)])
+        self.reader.open()
+        self.timestamps = []
+        img_connections = [x for x in self.reader.connections if x.topic == self.compressed_image_topic]
+        self.img_messages = self.reader.messages(connections=img_connections)
+        camera_info_connections = [x for x in self.reader.connections if x.topic == self.camera_info_topic]
+        self.camera_info_messages = self.reader.messages(connections=camera_info_connections)
+        self.camera_intrinsics = self.get_intrinsics(self.img_size)
+    @staticmethod
+    def CompressedImageMsg2Img(msg):
+        img = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_UNCHANGED)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        return img
+
+    def __len__(self):
+        count = self.reader.topics[self.compressed_image_topic].msgcount - 1
+        logger.info(f"Number of images in {self.dataset_path}: {count}")
+        return count
+
+    def get_timestamp(self, idx):
+        return self.timestamps[idx]
+
+    def read_img(self, idx):
+        logger.info(f"Reading image {idx} from {self.dataset_path}")
+        connection, timestamp, raw_msg = next(self.img_messages)
+        msg = self.reader.deserialize(raw_msg, connection.msgtype)
+        # if self.img_h == 0:
+        #     self.img_h, self.img_w = msg.height, msg.width
+        img = self.CompressedImageMsg2Img(msg)
+        self.timestamps.append(timestamp/1e9)
+        return img
+
+    def __del__(self):
+        if hasattr(self, "reader") and self.reader is not None:
+            self.reader.close()
+
+    def get_intrinsics(self, img_size):
+        connection, timestamp, raw_msg = next(self.camera_info_messages)
+        msg = self.reader.deserialize(raw_msg, connection.msgtype)
+        K = np.array(msg.k).reshape(3, 3)
+        K_opt = K.copy()
+        distortion = np.array(msg.d)
+        W = msg.width
+        H = msg.height
+        mapx, mapy = None, None
+        center = config["dataset"]["center_principle_point"]
+        K_opt, _ = cv2.getOptimalNewCameraMatrix(
+            K, distortion, (W, H), 0, (W, H), centerPrincipalPoint=center
+        )
+        mapx, mapy = cv2.initUndistortRectifyMap(
+            K, distortion, None, K_opt, (W, H), cv2.CV_32FC1
+        )
+        return Intrinsics(img_size, W, H, K, K_opt, distortion, mapx, mapy)
+
+class ROS2LiveStreamDataset(MonocularDataset, Node):
+    def __init__(self, image_topic='/zed/zed_node/left/image_rect_color', info_topic='/zed/zed_node/left/camera_info'):
+        
+        Node.__init__(self, 'ros2_live_stream_node')
+        MonocularDataset.__init__(self)
+
+
+        self.bridge = CvBridge()
+        self.image_topic = image_topic
+        self.info_topic = info_topic
+        self.timestamp = None
+
+        self.frame = None
+        self.intrinsics = None
+        self.lock = Lock()
+        self.dataset_path = None
+        self.save_results = False
+
+        self.h, self.w = 720, 1280
+        # self.use_calibration = True
+
+
+        # Subscribe to image and camera info
+        self.create_subscription(Image, self.image_topic, self.image_callback, 10)
+        
+        # Subscribe to camera info only if use_calibration is True
+        if self.use_calibration:
+            self.create_subscription(CameraInfo, self.info_topic, self.info_callback, 10)
+
+        # Run ROS in a background thread
+        self.spin_thread = Thread(target=rclpy.spin, args=(self,), daemon=True)
+        self.spin_thread.start()
+    
+    def __len__(self):
+        return 999999
+    
+    def image_callback(self, msg):
+        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgra8')
+        # print(f"Image callback: type={type(frame)}, shape={getattr(frame, 'shape', 'No shape')}")
+        timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        with self.lock:
+            self.frame = frame
+            self.timestamp = timestamp
+
+    def info_callback(self, msg):
+        k = np.array(msg.k).reshape(3, 3)
+        self.w = msg.width
+        self.h = msg.height
+
+        self.camera_intrinsics = Intrinsics.from_calib(
+            self.img_size,
+            self.w,
+            self.h,
+            [k[0, 0], k[1, 1], k[0, 2], k[1, 2]]
+        )
+
+        # print(f"Camera Intrinsics set: {self.camera_intrinsics}")
+
+        with self.lock:
+            self.intrinsics = k
+
+    def get_data(self):
+        with self.lock:
+            if self.frame is not None and self.intrinsics is not None:
+                return self.frame.copy(), self.intrinsics.copy()
+        return None, None
+
+    def read_img(self, idx):
+        while True:
+            # Check if the image topic has active publishers
+            publishers = self.get_publishers_info_by_topic(self.image_topic)
+            if not publishers:
+                raise RuntimeError(f"No publishers found for topic {self.image_topic}. Ensure the camera node is running.")
+
+            with self.lock:
+                img = self.frame.copy() if self.frame is not None else None
+                timestamp = self.timestamp
+
+            if img is not None:
+                break
+
+            time.sleep(0.01)  # Short sleep to avoid high CPU usage
+
+        if img.dtype != np.uint8:
+            raise ValueError(f"Image dtype is {img.dtype}, expected uint8")
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+        # print(f"read_img output: shape={img.shape}, dtype={img.dtype}")  
+        self.timestamps.append(timestamp)
+        return img
 
 class Webcam(MonocularDataset):
     def __init__(self):
@@ -233,32 +396,18 @@ class MP4Dataset(MonocularDataset):
         super().__init__()
         self.use_calibration = False
         self.dataset_path = pathlib.Path(dataset_path)
-        if HAS_TORCHCODEC:
-            self.decoder = VideoDecoder(str(self.dataset_path))
-            self.fps = self.decoder.metadata.average_fps
-            self.total_frames = self.decoder.metadata.num_frames
-        else:
-            print("torchcodec is not installed. This may slow down the dataloader")
-            self.cap = cv2.VideoCapture(str(self.dataset_path))
-            self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
+        self.decoder = VideoDecoder(str(self.dataset_path))
+        self.fps = self.decoder.metadata.average_fps
+        self.total_frames = self.decoder.metadata.num_frames
         self.stride = config["dataset"]["subsample"]
 
     def __len__(self):
         return self.total_frames // self.stride
 
     def read_img(self, idx):
-        if HAS_TORCHCODEC:
-            img = self.decoder[idx * self.stride]  # c,h,w
-            img = img.permute(1, 2, 0)
-            img = img.numpy()
-        else:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, idx * self.stride)
-            ret, img = self.cap.read()
-            if not ret:
-                raise ValueError("Failed to read image")
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = self.decoder[idx * self.stride]  # c,h,w
+        img = img.permute(1, 2, 0)
+        img = img.numpy()
         img = img.astype(self.dtype)
         timestamp = idx / self.fps
         self.timestamps.append(timestamp)
@@ -316,8 +465,7 @@ class Intrinsics:
 
         return Intrinsics(img_size, W, H, K, K_opt, distortion, mapx, mapy)
 
-
-def load_dataset(dataset_path):
+def load_dataset(dataset_path, compressed_image_topic=None, camera_info_topic=None):
     split_dataset_type = dataset_path.split("/")
     if "tum" in split_dataset_type:
         return TUMDataset(dataset_path)
@@ -327,10 +475,16 @@ def load_dataset(dataset_path):
         return ETH3DDataset(dataset_path)
     if "7-scenes" in split_dataset_type:
         return SevenScenesDataset(dataset_path)
+    if "ros2bag" in split_dataset_type:
+        return ROS2BagDataset(dataset_path, compressed_image_topic, camera_info_topic)
     if "realsense" in split_dataset_type:
         return RealsenseDataset()
     if "webcam" in split_dataset_type:
         return Webcam()
+    if "ros2" in split_dataset_type:
+        return ROS2LiveStreamDataset()
+    
+    
 
     ext = split_dataset_type[-1].split(".")[-1]
     if ext in ["mp4", "avi", "MOV", "mov"]:
