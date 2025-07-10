@@ -48,7 +48,7 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 ```
 
 ## Online Demo
-
+### Input ROS topic -> Output ModernGL Viewer with ImGUI
 Connect the camera and publish zed ros2 topic in the following way:
 ```bash
 ros2 launch zed_wrapper zed_camera.launch.py camera_model:=zed2
@@ -67,6 +67,15 @@ If the calibration parameters are known, you can specify them in intrinsics.yaml
 python3 main.py --dataset ros2 --config config/base.yaml --calib config/intrinsics_zed_demo.yaml
 ```
 This produces 9 fps SLAM rate on 4070 RTX GPU with 16 GB VRAM. 
+
+### Input ROS topic -> Output ROS topic with Rviz
+For output topic remapping as ros topics, we are working on it. Stay Tuned !!
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=6snX6V5s2Pc" target="_blank">
+    <img src="media/mast3r_slam_ros2.gif" alt="Video Thumbnail" width="80%">
+  </a>
+</p>
 
 
 
